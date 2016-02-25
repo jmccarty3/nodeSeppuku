@@ -8,6 +8,9 @@ dependencies:
     - wget -O glide.zip https://github.com/Masterminds/glide/releases/download/0.9.1/glide-0.9.1-linux-amd64.zip
     - unzip -j glide.zip "linux-amd64/glide"
     - ./glide install
+    - mkdir -p ~/golang/src/github.com/jmccarty3/
+    - ln -s $pwd ~/golang/src/github.com/jmccarty3/nodeSeppuku
     - go build:
         environment:
+          GOPATH: $GOPATH:~/golang
           GO15VENDOREXPERIMENT: 1
