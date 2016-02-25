@@ -12,5 +12,5 @@ dependencies:
     - ln -s $pwd ~/golang/src/github.com/jmccarty3/nodeSeppuku
     - go build:
         environment:
-          GOPATH: $GOPATH:/home/ubuntu/golang
+          GOPATH: /home/ubuntu/golang
           GO15VENDOREXPERIMENT: 1
