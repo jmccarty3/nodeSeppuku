@@ -1,0 +1,12 @@
+hash: c1abae761be6dbf689f216b86d5d277ada6e9fd9a14e664ec4f90987f5345e91
+updated: 2016-02-25T12:20:10.406596905-05:00
+imports:
+- name: github.com/aws/aws-sdk-go
+  version: e4be72e584418dc0ff2af22ae247095143a7f258
+  subpackages:
+  - aws
+- name: k8s.io/kubernetes
+  version: e4e6878293a339e4087dae684647c9e53f1cf9f0
+  subpackages:
+  - pkg
+devImports: []

@@ -2,6 +2,8 @@ machine:
   services:
     - docker
 dependencies:
+  cache_directories:
+    - "vendor" #Speed up builds by remembering what was vendored
   override:
     - wget -O glide.zip https://github.com/Masterminds/glide/releases/download/0.9.1/glide-0.9.1-linux-amd64.zip
     - unzip -j glide.zip "linux-amd64/glide"
