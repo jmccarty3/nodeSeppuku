@@ -1,5 +1,7 @@
 FROM alpine
 
+RUN apk --update add ca-certificates
+
 ADD nodeSeppuku /
 
 #Fix for missing glibc
