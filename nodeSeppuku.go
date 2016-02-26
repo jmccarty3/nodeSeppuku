@@ -18,12 +18,18 @@ var (
 	argKubeletName     = flag.String("kubelet-name", "", "Kubelet Name to search for")
 	argKubeletIP       = flag.String("kubelet-address", "", "Kubelet node address to search for")
 	argTerminateTime   = flag.Int64("termination-time", 10, "How long (in minutes) a Node must have no pods before being terminated")
+	argSelfTest        = flag.Bool("self-test", false, "Perform simple self test")
 )
 
 type ConfigInfo map[string]string
 
 func main() {
 	flag.Parse()
+
+	if *argSelfTest {
+		fmt.Print("All good")
+		return
+	}
 	config := make(map[string]string)
 
 	config[APIHostParam] = *argAPIHost
