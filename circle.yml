@@ -13,4 +13,4 @@ dependencies:
   - |
     echo 'export GOPATH=$HOME/.go_project:$GOPATH' >> ~/.circlerc
     echo 'export GO15VENDOREXPERIMENT=1' >> ~/.circlerc
-  - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && ./glide install && go build
+  - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && ./glide update && go build
