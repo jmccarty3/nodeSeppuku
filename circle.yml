@@ -15,7 +15,15 @@ dependencies:
   - |
     echo 'export GOPATH=$HOME/.go_project:$GOPATH' >> ~/.circlerc
   - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && ./glide update && go get -v -t . && go build
+  - docker build -t jmccarty3/nodeseppuku .
 
 test:
   override:
     - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && go test -v -race $(./glide novendor)
+
+deployment:
+  hub:
+    branch: master
+    commands:
+      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS
+      - docker push jmccarty3/nodeseppuku
