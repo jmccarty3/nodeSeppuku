@@ -64,16 +64,21 @@ func (w *AWSWorker) getAutoScalingGroup(config map[string]string) (string, error
 		MaxRecords:  aws.Int64(1),
 	}
 
-	if resp, err := w.client.DescribeAutoScalingInstances(params); err == nil && len(resp.AutoScalingInstances) > 0 {
-		return *resp.AutoScalingInstances[0].AutoScalingGroupName, nil
+	if resp, err := w.client.DescribeAutoScalingInstances(params); err == nil {
+		if len(resp.AutoScalingInstances) > 0 {
+			return *resp.AutoScalingInstances[0].AutoScalingGroupName, nil
+		} else {
+			glog.Warning("Instance: ", w.instanceID, " does not appear to be in an AS group")
+		}
 	} else {
-		glog.Warning("Error getting Autoscaling group by instance id. ", err)
+		glog.Error("Error getting Autoscaling group by instance id. ", err)
+		return "", err
 	}
 
-	return "", errors.New("Unable to get aws autoscaling group for instance")
+	return "", nil
 }
 
-func (w *AWSWorker) RemoveNode() error {
+func (w *AWSWorker) detachAndScaleASG() error {
 	params := &autoscaling.DetachInstancesInput{
 		InstanceIds:                    []*string{aws.String(w.instanceID)},
 		AutoScalingGroupName:           aws.String(w.autoscalingID),
@@ -107,6 +112,16 @@ func (w *AWSWorker) RemoveNode() error {
 		}
 
 		time.Sleep(10 * time.Second)
+	}
+
+	return nil
+}
+
+func (w *AWSWorker) RemoveNode() error {
+	if w.autoscalingID != "" {
+		if err := w.detachAndScaleASG(); err != nil {
+			return err
+		}
 	}
 
 	//Terminate instance
