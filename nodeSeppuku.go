@@ -53,10 +53,15 @@ func main() {
 		fmt.Println("Remove Result:", aw.RemoveNode())
 	}
 
+	var err error
 	if *argKubeletName != "" {
-		kube.WatchNodeByName(*argKubeletName, &termTime, deathFunc)
+		err = kube.WatchNodeByName(*argKubeletName, &termTime, deathFunc)
 	} else {
-		kube.WatchNodeByAddress(*argKubeletIP, &termTime, deathFunc)
+		err = kube.WatchNodeByAddress(*argKubeletIP, &termTime, deathFunc)
+	}
+
+	if err != nil {
+		panic(fmt.Sprint("Error watching Kube node: ", err))
 	}
 
 	select {}

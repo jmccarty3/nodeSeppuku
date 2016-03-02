@@ -81,7 +81,7 @@ func (k *KubeWorker) findNodeByAddress(address string) (api.Node, error) {
 		}
 	}
 
-	return api.Node{}, errors.New("Unabel to find node by address")
+	return api.Node{}, errors.New("Unable to find node by address")
 }
 
 func setTimerIfEmpty(store cache.StoreToPodLister, timer *time.Timer, duration *time.Duration) {
