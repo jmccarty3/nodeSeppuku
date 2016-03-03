@@ -116,9 +116,11 @@ func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
 }
 
 func (w *AWSWorker) RemoveNode() error {
-	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err == nil && autoscalingID != "" {
-		if err = w.detachAndScaleASG(autoscalingID); err != nil {
-			return err
+	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err != nil {
+		if autoscalingID != "" {
+			if err = w.detachAndScaleASG(autoscalingID); err != nil {
+				return err
+			}
 		}
 	} else {
 		return err
@@ -130,7 +132,7 @@ func (w *AWSWorker) RemoveNode() error {
 	terminateParams := &ec2.TerminateInstancesInput{
 		InstanceIds: []*string{aws.String(w.instanceID)},
 	}
-
+	glog.Info("Calling Terminate for Instance: ", w.instanceID)
 	if _, e := ec.TerminateInstances(terminateParams); e != nil {
 		glog.Error("Error Terminating Instnace:", e)
 		return e
