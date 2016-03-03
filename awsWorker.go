@@ -116,13 +116,14 @@ func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
 }
 
 func (w *AWSWorker) RemoveNode() error {
-	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err != nil {
+	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err == nil {
 		if autoscalingID != "" {
 			if err = w.detachAndScaleASG(autoscalingID); err != nil {
 				return err
 			}
 		}
 	} else {
+		glog.Error("Could not get Autoscaling ID. Error: ", err)
 		return err
 	}
 
