@@ -11,14 +11,13 @@ import (
 )
 
 var (
-	argAPIHost         = flag.String(APIHostParam, "localhost", "Api Server host name")
-	argAPIPort         = flag.String(APIPortParam, "8080", "Api Server Port")
-	argInstanceID      = flag.String(InstnaceIDParam, "", "AWS Instance ID of kubelet to watch")
-	argAutoscalingName = flag.String(ASIDPram, "", "Autoscaling Groupname instance belongs to")
-	argKubeletName     = flag.String("kubelet-name", "", "Kubelet Name to search for")
-	argKubeletIP       = flag.String("kubelet-address", "", "Kubelet node address to search for")
-	argTerminateTime   = flag.Int64("termination-time", 10, "How long (in minutes) a Node must have no pods before being terminated")
-	argSelfTest        = flag.Bool("self-test", false, "Perform simple self test")
+	argAPIHost       = flag.String(APIHostParam, "localhost", "Api Server host name")
+	argAPIPort       = flag.String(APIPortParam, "8080", "Api Server Port")
+	argInstanceID    = flag.String(InstnaceIDParam, "", "AWS Instance ID of kubelet to watch")
+	argKubeletName   = flag.String("kubelet-name", "", "Kubelet Name to search for")
+	argKubeletIP     = flag.String("kubelet-address", "", "Kubelet node address to search for")
+	argTerminateTime = flag.Int64("termination-time", 10, "How long (in minutes) a Node must have no pods before being terminated")
+	argSelfTest      = flag.Bool("self-test", false, "Perform simple self test")
 )
 
 type ConfigInfo map[string]string
@@ -36,7 +35,6 @@ func main() {
 	config[APIPortParam] = *argAPIPort
 
 	config[InstnaceIDParam] = *argInstanceID
-	config[ASIDPram] = *argAutoscalingName
 
 	if *argKubeletIP == "" && *argKubeletName == "" {
 		glog.Fatal("Cannot pass both an empty kubelet name and IP. Pick one")

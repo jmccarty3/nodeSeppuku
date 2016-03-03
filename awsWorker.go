@@ -15,15 +15,13 @@ import (
 )
 
 type AWSWorker struct {
-	client        *autoscaling.AutoScaling
-	instanceID    string
-	autoscalingID string
-	region        string
+	client     *autoscaling.AutoScaling
+	instanceID string
+	region     string
 }
 
 const (
 	InstnaceIDParam = "instance-id"
-	ASIDPram        = "autoscaling"
 	RegionParam     = "Region"
 	DefaultRegion   = "us-east-1"
 )
@@ -36,11 +34,7 @@ func getRegion(config map[string]string) string {
 	return DefaultRegion
 }
 
-func getInstnceID(config map[string]string) (string, error) {
-	if id, exists := config[InstnaceIDParam]; exists && id != "" {
-		return id, nil
-	}
-
+func getInstanceIDFromMetadata() (string, error) {
 	//Try the metadata service
 	svc := ec2metadata.New(session.New(&aws.Config{}))
 
@@ -53,11 +47,15 @@ func getInstnceID(config map[string]string) (string, error) {
 	return "", errors.New("Unable to get instance id")
 }
 
-func (w *AWSWorker) getAutoScalingGroup(config map[string]string) (string, error) {
-	if as, exists := config[ASIDPram]; exists && as != "" {
-		return as, nil
+func getInstanceID(config map[string]string) (string, error) {
+	if id, exists := config[InstnaceIDParam]; exists && id != "" {
+		return id, nil
 	}
 
+	return getInstanceIDFromMetadata()
+}
+
+func (w *AWSWorker) getAutoScalingGroupFromAPI() (string, error) {
 	//Try to find it based on instance ID
 	params := &autoscaling.DescribeAutoScalingInstancesInput{
 		InstanceIds: []*string{aws.String(w.instanceID)},
@@ -78,10 +76,10 @@ func (w *AWSWorker) getAutoScalingGroup(config map[string]string) (string, error
 	return "", nil
 }
 
-func (w *AWSWorker) detachAndScaleASG() error {
+func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
 	params := &autoscaling.DetachInstancesInput{
 		InstanceIds:                    []*string{aws.String(w.instanceID)},
-		AutoScalingGroupName:           aws.String(w.autoscalingID),
+		AutoScalingGroupName:           aws.String(autoscalingID),
 		ShouldDecrementDesiredCapacity: aws.Bool(true),
 	}
 
@@ -94,7 +92,7 @@ func (w *AWSWorker) detachAndScaleASG() error {
 
 	activtyParams := &autoscaling.DescribeScalingActivitiesInput{
 		ActivityIds:          []*string{resp.Activities[0].ActivityId},
-		AutoScalingGroupName: aws.String(w.autoscalingID),
+		AutoScalingGroupName: aws.String(autoscalingID),
 		MaxRecords:           aws.Int64(1),
 	}
 
@@ -118,10 +116,12 @@ func (w *AWSWorker) detachAndScaleASG() error {
 }
 
 func (w *AWSWorker) RemoveNode() error {
-	if w.autoscalingID != "" {
-		if err := w.detachAndScaleASG(); err != nil {
+	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err == nil && autoscalingID != "" {
+		if err = w.detachAndScaleASG(autoscalingID); err != nil {
 			return err
 		}
+	} else {
+		return err
 	}
 
 	//Terminate instance
@@ -158,15 +158,11 @@ func NewAWSWorker(config map[string]string) *AWSWorker {
 	}
 
 	var err error
-	if w.instanceID, err = getInstnceID(config); err != nil {
+	if w.instanceID, err = getInstanceID(config); err != nil {
 		panic("Can't get an instance id")
 	}
 
-	if w.autoscalingID, err = w.getAutoScalingGroup(config); err != nil {
-		panic("Can't get an autoscaling id")
-	}
-
-	glog.Infof("AWS Worker running for instance: %s in AutoscalingGroup: %s", w.instanceID, w.autoscalingID)
+	glog.Infof("AWS Worker running for instance: %s ", w.instanceID)
 
 	return w
 }
