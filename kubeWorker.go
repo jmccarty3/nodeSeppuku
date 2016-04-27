@@ -10,11 +10,15 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/util/wait"
+
+	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/runtime"
 )
 
 type KubeWorker struct {
@@ -49,7 +53,7 @@ func getAPIAddress(config ConfigInfo) string {
 }
 
 func NewKubeWorker(config ConfigInfo) *KubeWorker {
-	client, err := kclient.New(&kclient.Config{
+	client, err := kclient.New(&restclient.Config{
 		Host: getAPIAddress(config),
 	})
 
@@ -67,7 +71,10 @@ func (k *KubeWorker) findNodeByName(name string) (*api.Node, error) {
 }
 
 func (k *KubeWorker) findNodeByAddress(address string) (api.Node, error) {
-	nodes, err := k.client.Nodes().List(labels.Everything(), fields.Everything())
+	nodes, err := k.client.Nodes().List(api.ListOptions{
+		LabelSelector: labels.Everything(),
+		FieldSelector: fields.Everything(),
+	})
 
 	if err != nil {
 		return api.Node{}, err
@@ -84,6 +91,27 @@ func (k *KubeWorker) findNodeByAddress(address string) (api.Node, error) {
 	return api.Node{}, errors.New("Unable to find node by address")
 }
 
+func isPodDaemonset(pod *api.Pod) bool {
+	//Same process as kubectl drain
+	creatorRef, found := pod.ObjectMeta.Annotations[controller.CreatedByAnnotation]
+
+	if found {
+		// Now verify that the specified creator actually exists.
+		var sr api.SerializedReference
+		if err := runtime.DecodeInto(api.Codecs.UniversalDecoder(), []byte(creatorRef), &sr); err != nil {
+			glog.Warningf("Pod: %s claimed to have the CreatedByAnnotation. Decoding it failed.", pod.Name)
+			return false
+		}
+
+		if sr.Reference.Kind == "DaemonSet" {
+			//Skipping any validation.
+			//TODO Consider not taking pods at their word. They lie.
+			return true
+		}
+	}
+	return false
+}
+
 func setTimerIfEmpty(store cache.StoreToPodLister, timer *time.Timer, duration *time.Duration) {
 	re := regexp.MustCompile("gcr.io/google_containers/pause")
 	pods, _ := store.List(labels.Everything())
@@ -95,6 +123,12 @@ func setTimerIfEmpty(store cache.StoreToPodLister, timer *time.Timer, duration *
 					continue
 				}
 			}
+
+			//Ignore DaemonSets
+			if isPodDaemonset(p) {
+				continue
+			}
+
 			glog.Info("Pod Alive:", p.Name)
 			return
 		}
@@ -132,7 +166,7 @@ func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration,
 		},
 	)
 
-	go k.podController.Run(util.NeverStop)
+	go k.podController.Run(wait.NeverStop)
 	//Wait for initial sync
 	for k.podController.HasSynced() == false {
 		time.Sleep(30 * time.Second)
@@ -161,7 +195,7 @@ func (k *KubeWorker) WatchNodeByAddress(address string, terminateTime *time.Dura
 		return err
 	}
 	glog.Info(node.Name)
-	glog.Info(k.client.ServerAPIVersions())
+	glog.Info(k.client.ServerVersion())
 
 	k.createWatcher(&node, terminateTime, callback)
 	return nil
