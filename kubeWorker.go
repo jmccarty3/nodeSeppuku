@@ -157,8 +157,10 @@ func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration,
 		0,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(new interface{}) {
-				glog.Info("Pod Added. Stopping timer")
-				timer.Stop()
+				if isPodDaemonset(new.(*api.Pod)) == false {
+					glog.Info("Non-Daemonset Pod Added. Stopping timer")
+					timer.Stop()
+				}
 			},
 			DeleteFunc: func(old interface{}) {
 				setTimerIfEmpty(k.pods, timer, terminateTime)
