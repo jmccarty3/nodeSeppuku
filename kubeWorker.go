@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"time"
 
@@ -30,31 +29,12 @@ type KubeWorker struct {
 type NodeEmptyCallback func(node *api.Node)
 
 const (
-	DefaultAPIHost = "localhost"
-	DefaultAPIPort = "8080"
-	APIHostParam   = "api-server"
-	APIPortParam   = "api-port"
+	APIURLParam = "api-server-url"
 )
 
-func getAPIAddress(config ConfigInfo) string {
-	var host, port, scheme string
-	var exists bool
-
-	if host, exists = config[APIHostParam]; exists == false || host == "" {
-		host = DefaultAPIHost
-	}
-
-	if port, exists = config[APIPortParam]; exists == false || port == "" {
-		port = DefaultAPIPort
-	}
-
-	scheme = "http"
-	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
-}
-
-func NewKubeWorker(config ConfigInfo) *KubeWorker {
+func newKubeWorker(config ConfigInfo) *KubeWorker {
 	client, err := kclient.New(&restclient.Config{
-		Host: getAPIAddress(config),
+		Host: config[APIURLParam],
 	})
 
 	if err != nil {

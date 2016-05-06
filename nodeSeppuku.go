@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	argAPIHost       = flag.String(APIHostParam, "localhost", "Api Server host name")
-	argAPIPort       = flag.String(APIPortParam, "8080", "Api Server Port")
+	argAPIURL        = flag.String(APIURLParam, "", "Api Server url")
 	argInstanceID    = flag.String(InstnaceIDParam, "", "AWS Instance ID of kubelet to watch")
 	argKubeletName   = flag.String("kubelet-name", "", "Kubelet Name to search for")
 	argKubeletIP     = flag.String("kubelet-address", "", "Kubelet node address to search for")
@@ -31,13 +30,12 @@ func main() {
 	}
 	config := make(map[string]string)
 
-	config[APIHostParam] = *argAPIHost
-	config[APIPortParam] = *argAPIPort
+	config[APIURLParam] = *argAPIURL
 
 	config[InstnaceIDParam] = *argInstanceID
 
 	aw := NewAWSWorker(config)
-	kube := NewKubeWorker(config)
+	kube := newKubeWorker(config)
 	termTime := time.Duration(*argTerminateTime) * time.Minute
 
 	deathFunc := func(node *api.Node) {
