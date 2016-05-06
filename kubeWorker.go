@@ -33,9 +33,23 @@ const (
 )
 
 func newKubeWorker(config ConfigInfo) *KubeWorker {
-	client, err := kclient.New(&restclient.Config{
-		Host: config[APIURLParam],
-	})
+	var restConfig *restclient.Config
+
+	if config[APIURLParam] == "" {
+		glog.Info("No url specified. Falling back to in cluster config")
+		var cerr error
+		restConfig, cerr = restclient.InClusterConfig()
+
+		if cerr != nil {
+			panic(cerr)
+		}
+	} else {
+		restConfig = &restclient.Config{
+			Host: config[APIURLParam],
+		}
+	}
+
+	client, err := kclient.New(restConfig)
 
 	if err != nil {
 		panic(err)
