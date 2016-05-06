@@ -1,5 +1,6 @@
 package: github.com/jmccarty3/nodeSeppuku
 import:
+- package: github.com/golang/glog
 - package: github.com/aws/aws-sdk-go
   subpackages:
   - aws

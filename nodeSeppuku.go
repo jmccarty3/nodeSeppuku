@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/kubernetes/pkg/api"
 )
 
@@ -18,6 +16,8 @@ var (
 	argKubeletIP     = flag.String("kubelet-address", "", "Kubelet node address to search for")
 	argTerminateTime = flag.Int64("termination-time", 10, "How long (in minutes) a Node must have no pods before being terminated")
 	argSelfTest      = flag.Bool("self-test", false, "Perform simple self test")
+	argKubeletHost   = flag.String("kubelet-host", "localhost", "Hostname where the kubelet server exists")
+	argKubeletPort   = flag.String("kubelet-port", "10255", "Port address of the readonly port")
 )
 
 type ConfigInfo map[string]string
@@ -36,12 +36,7 @@ func main() {
 
 	config[InstnaceIDParam] = *argInstanceID
 
-	if *argKubeletIP == "" && *argKubeletName == "" {
-		glog.Fatal("Cannot pass both an empty kubelet name and IP. Pick one")
-	}
-
 	aw := NewAWSWorker(config)
-
 	kube := NewKubeWorker(config)
 	termTime := time.Duration(*argTerminateTime) * time.Minute
 
@@ -52,6 +47,10 @@ func main() {
 	}
 
 	var err error
+	if *argKubeletName == "" && *argKubeletIP == "" {
+		*argKubeletName = getNameFromKubeletOrDie(*argKubeletHost, *argKubeletPort)
+	}
+
 	if *argKubeletName != "" {
 		err = kube.WatchNodeByName(*argKubeletName, &termTime, deathFunc)
 	} else {
