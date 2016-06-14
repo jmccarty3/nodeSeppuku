@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -20,15 +21,18 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
+//KubeWorker operates on a kubernetes cluster
 type KubeWorker struct {
 	client        *kclient.Client
 	pods          cache.StoreToPodLister
 	podController *framework.Controller
 }
 
+//NodeEmptyCallback represents the function to call when then node is empty
 type NodeEmptyCallback func(node *api.Node)
 
 const (
+	//APIURLParam is the parameter used to specify the api server url from the command line
 	APIURLParam = "api-server-url"
 )
 
@@ -106,7 +110,47 @@ func isPodDaemonset(pod *api.Pod) bool {
 	return false
 }
 
-func setTimerIfEmpty(store cache.StoreToPodLister, timer *time.Timer, duration *time.Duration) {
+type killTimer struct {
+	timer    *time.Timer
+	timerSet bool
+	lock     sync.Mutex
+	C        <-chan time.Time
+}
+
+//StopIfRunning stops the wrapped timer if it is currently set
+func (k *killTimer) StopIfRunning() {
+	k.lock.Lock()
+	defer k.lock.Unlock()
+
+	if k.timerSet {
+		k.timer.Stop()
+		k.timerSet = false
+	}
+}
+
+//ResetIfNotRunning restes the wrapper timer if it is not already running
+func (k *killTimer) ResetIfNotRunning(duration time.Duration) {
+	k.lock.Lock()
+	defer k.lock.Unlock()
+
+	if !k.timerSet {
+		k.timer.Reset(duration)
+		k.timerSet = true
+	}
+
+}
+
+func newKillTimer() *killTimer {
+	timer := &killTimer{
+		timer:    time.NewTimer(10 * time.Minute),
+		timerSet: false, //We will stop it immedially following this
+	}
+	timer.timer.Stop()
+	timer.C = timer.timer.C
+	return timer
+}
+
+func isNodeEmpty(store cache.StoreToPodLister) bool {
 	re := regexp.MustCompile("gcr.io/google_containers/pause")
 	pods, _ := store.List(labels.Everything())
 	for _, p := range pods {
@@ -123,12 +167,12 @@ func setTimerIfEmpty(store cache.StoreToPodLister, timer *time.Timer, duration *
 				continue
 			}
 
-			glog.Info("Pod Alive:", p.Name)
-			return
+			glog.V(2).Info("Pod Alive:", p.Name)
+			return false
 		}
 	}
-	glog.Info("Pods Empty. Setting Timer")
-	timer.Reset(*duration)
+	glog.Info("Pods Empty.")
+	return true
 }
 
 func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration, callback NodeEmptyCallback) {
@@ -137,29 +181,11 @@ func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration,
 		"spec.nodeName": node.Name}
 	lw := cache.NewListWatchFromClient(k.client, "pods", api.NamespaceAll, fields.SelectorFromSet(f))
 
-	timer := time.NewTimer(10 * time.Minute) //Initial Time doesn't matter
-	timer.Stop()
-
-	go func() {
-		<-timer.C
-		callback(node)
-	}()
-
 	k.pods.Store, k.podController = framework.NewInformer(
 		lw,
 		&api.Pod{},
 		0,
-		framework.ResourceEventHandlerFuncs{
-			AddFunc: func(new interface{}) {
-				if isPodDaemonset(new.(*api.Pod)) == false {
-					glog.Info("Non-Daemonset Pod Added. Stopping timer")
-					timer.Stop()
-				}
-			},
-			DeleteFunc: func(old interface{}) {
-				setTimerIfEmpty(k.pods, timer, terminateTime)
-			},
-		},
+		framework.ResourceEventHandlerFuncs{},
 	)
 
 	go k.podController.Run(wait.NeverStop)
@@ -169,9 +195,26 @@ func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration,
 	}
 	glog.Info("Initial sync complete")
 
-	setTimerIfEmpty(k.pods, timer, terminateTime)
+	terminateTimer := newKillTimer()
+	go func() {
+		<-terminateTimer.C
+		callback(node)
+	}()
+
+	ticker := time.NewTicker(time.Minute)
+	go func() {
+		for t := range ticker.C {
+			glog.V(3).Info("Checking pods at ", t)
+			if isNodeEmpty(k.pods) {
+				terminateTimer.ResetIfNotRunning(time.Minute * *terminateTime)
+			} else {
+				terminateTimer.StopIfRunning()
+			}
+		}
+	}()
 }
 
+//WatchNodeByName creates a watcher based on nodename given
 func (k *KubeWorker) WatchNodeByName(name string, terminateTime *time.Duration, callback NodeEmptyCallback) error {
 	node, err := k.findNodeByName(name)
 
@@ -184,6 +227,7 @@ func (k *KubeWorker) WatchNodeByName(name string, terminateTime *time.Duration, 
 	return nil
 }
 
+//WatchNodeByAddress creates a watcher based on the node address
 func (k *KubeWorker) WatchNodeByAddress(address string, terminateTime *time.Duration, callback NodeEmptyCallback) error {
 	node, err := k.findNodeByAddress(address)
 
@@ -197,6 +241,7 @@ func (k *KubeWorker) WatchNodeByAddress(address string, terminateTime *time.Dura
 	return nil
 }
 
+//MarkUnschedulable marks the given node as Unschedulable
 func (k *KubeWorker) MarkUnschedulable(node *api.Node) {
 	node.Spec.Unschedulable = true
 	k.client.Nodes().Update(node)

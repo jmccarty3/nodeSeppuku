@@ -19,6 +19,7 @@ var (
 	argKubeletPort   = flag.String("kubelet-port", "10255", "Port address of the readonly port")
 )
 
+//ConfigInfo is used to pass configuration information to objects
 type ConfigInfo map[string]string
 
 func main() {

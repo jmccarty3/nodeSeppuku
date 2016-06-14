@@ -1,12 +1,14 @@
 package: github.com/jmccarty3/nodeSeppuku
 import:
+- package: speter.net/go/exp/math/dec/inf
+  repo: git@github.com:go-inf/inf.git
 - package: github.com/golang/glog
 - package: github.com/aws/aws-sdk-go
   subpackages:
   - aws
 - package: github.com/docker/docker
   version: 1.9.0
-- package: github.com/docker/libcontainer
+- package: github.com/docker/libcontaine
 - package: k8s.io/kubernetes
   version: 1.2.0
   subpackages:
