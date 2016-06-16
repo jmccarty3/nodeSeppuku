@@ -134,6 +134,7 @@ func (k *killTimer) ResetIfNotRunning(duration time.Duration) {
 	defer k.lock.Unlock()
 
 	if !k.timerSet {
+		glog.Infon("Setting kill timer for %v \n", duration)
 		k.timer.Reset(duration)
 		k.timerSet = true
 	}
