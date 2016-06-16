@@ -8,7 +8,7 @@ import:
   - aws
 - package: github.com/docker/docker
   version: 1.9.0
-- package: github.com/docker/libcontaine
+- package: github.com/docker/libcontainer
 - package: k8s.io/kubernetes
   version: 1.2.0
   subpackages:
