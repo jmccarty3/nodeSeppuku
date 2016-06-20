@@ -173,7 +173,8 @@ func getCreds() *credentials.Credentials {
 func NewAWSWorker(config map[string]string) *AWSWorker {
 	w := &AWSWorker{
 		client: autoscaling.New(session.New(&aws.Config{
-			Region: aws.String(getRegion(config)),
+			Credentials: getCreds(),
+			Region:      aws.String(getRegion(config)),
 		})),
 	}
 
