@@ -177,12 +177,14 @@ func NewAWSWorker(config map[string]string) *AWSWorker {
 		})),
 	}
 
+	w.region = *w.client.Config.Region
+
 	var err error
 	if w.instanceID, err = getInstanceID(config); err != nil {
 		panic("Can't get an instance id")
 	}
 
-	glog.Infof("AWS Worker running for instance: %s ", w.instanceID)
+	glog.Infof("AWS Worker running for instance: %s in region: %s", w.instanceID, w.region)
 
 	return w
 }
