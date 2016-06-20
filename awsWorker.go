@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -31,7 +32,24 @@ func getRegion(config map[string]string) string {
 		return r
 	}
 
+	if region, err := getRegionFromMetadata(); err == nil {
+		return region
+	}
+
 	return DefaultRegion
+}
+
+func getRegionFromMetadata() (string, error) {
+	//Try the metadata service
+	svc := ec2metadata.New(session.New(&aws.Config{}))
+	var failure error
+
+	if region, err := svc.Region(); err == nil {
+		return region, nil
+	} else {
+		failure = err
+	}
+	return "", fmt.Errorf("Unable to get region from metadata. %v", failure)
 }
 
 func getInstanceIDFromMetadata() (string, error) {
@@ -43,7 +61,6 @@ func getInstanceIDFromMetadata() (string, error) {
 	} else {
 		glog.Warning("Error getting instance-id from metadata", err)
 	}
-
 	return "", errors.New("Unable to get instance id")
 }
 
