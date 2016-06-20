@@ -202,12 +202,14 @@ func (k *KubeWorker) createWatcher(node *api.Node, terminateTime *time.Duration,
 		callback(node)
 	}()
 
+	glog.Info("Termination time:", *terminateTime)
+
 	ticker := time.NewTicker(time.Minute)
 	go func() {
 		for t := range ticker.C {
 			glog.V(3).Info("Checking pods at ", t)
 			if isNodeEmpty(k.pods) {
-				terminateTimer.ResetIfNotRunning(time.Minute * *terminateTime)
+				terminateTimer.ResetIfNotRunning(*terminateTime)
 			} else {
 				terminateTimer.StopIfRunning()
 			}
