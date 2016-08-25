@@ -123,6 +123,7 @@ func (k *killTimer) StopIfRunning() {
 	defer k.lock.Unlock()
 
 	if k.timerSet {
+		glog.Info("Canceling Timer")
 		k.timer.Stop()
 		k.timerSet = false
 	}
@@ -172,7 +173,7 @@ func isNodeEmpty(store cache.StoreToPodLister) bool {
 			return false
 		}
 	}
-	glog.Info("Pods Empty.")
+	glog.V(2).Info("Pods Empty.")
 	return true
 }
 
@@ -247,5 +248,7 @@ func (k *KubeWorker) WatchNodeByAddress(address string, terminateTime *time.Dura
 //MarkUnschedulable marks the given node as Unschedulable
 func (k *KubeWorker) MarkUnschedulable(node *api.Node) {
 	node.Spec.Unschedulable = true
-	k.client.Nodes().Update(node)
+	if _, err := k.client.Nodes().Update(node); err != nil {
+		glog.Errorf("Error marking node Unschedulable: %v", err)
+	}
 }

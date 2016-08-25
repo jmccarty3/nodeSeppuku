@@ -93,11 +93,37 @@ func (w *AWSWorker) getAutoScalingGroupFromAPI() (string, error) {
 	return "", nil
 }
 
+func (w *AWSWorker) canDecrimentGroup(autoscalingID string) (bool, error) {
+	params := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{aws.String(autoscalingID)},
+	}
+
+	resp, err := w.client.DescribeAutoScalingGroups(params)
+
+	if err != nil {
+		glog.Errorf("Could not obtain autoscaling group informaiton: %v", err)
+		return false, err
+	}
+
+	return *resp.AutoScalingGroups[0].DesiredCapacity != 0, nil
+}
+
 func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
+	var decriment bool
+	{
+		var err error
+		if decriment, err = w.canDecrimentGroup(autoscalingID); err != nil {
+			glog.Warning("Cannot detach from ASG.")
+			return err //Pass the error up
+		}
+	}
+
+	glog.Infof("ASG %s will be decrimented: %v", autoscalingID, decriment)
+
 	params := &autoscaling.DetachInstancesInput{
 		InstanceIds:                    []*string{aws.String(w.instanceID)},
 		AutoScalingGroupName:           aws.String(autoscalingID),
-		ShouldDecrementDesiredCapacity: aws.Bool(true),
+		ShouldDecrementDesiredCapacity: aws.Bool(decriment),
 	}
 
 	resp, err := w.client.DetachInstances(params)

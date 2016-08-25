@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/glog"
+
 	"k8s.io/kubernetes/pkg/api"
 )
 
@@ -40,9 +42,12 @@ func main() {
 	termTime := time.Duration(*argTerminateTime) * time.Minute
 
 	deathFunc := func(node *api.Node) {
-		fmt.Print("Nodes Empty!")
+		glog.Info("Nodes Empty!")
 		kube.MarkUnschedulable(node)
-		fmt.Println("Remove Result:", aw.RemoveNode())
+
+		if err := aw.RemoveNode(); err != nil {
+			glog.Fatalf("Could not remove node: %v", err)
+		}
 	}
 
 	var err error
