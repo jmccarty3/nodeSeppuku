@@ -4,12 +4,13 @@ import:
   repo: git@github.com:go-inf/inf.git
 - package: github.com/golang/glog
 - package: github.com/aws/aws-sdk-go
+  version: 1.2.10
   subpackages:
   - aws
 - package: github.com/docker/docker
-  version: 1.9.0
+  version: 1.9.1
 - package: github.com/docker/libcontainer
 - package: k8s.io/kubernetes
-  version: 1.2.0
+  version: 1.2.4
   subpackages:
   - pkg
