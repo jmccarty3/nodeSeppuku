@@ -19,6 +19,7 @@ type AWSWorker struct {
 	client     *autoscaling.AutoScaling
 	instanceID string
 	region     string
+	address    string
 }
 
 const (
@@ -42,25 +43,27 @@ func getRegion(config map[string]string) string {
 func getRegionFromMetadata() (string, error) {
 	//Try the metadata service
 	svc := ec2metadata.New(session.New(&aws.Config{}))
-	var failure error
+	var err error
+	var region string
 
-	if region, err := svc.Region(); err == nil {
+	if region, err = svc.Region(); err == nil {
 		return region, nil
-	} else {
-		failure = err
 	}
-	return "", fmt.Errorf("Unable to get region from metadata. %v", failure)
+
+	return "", fmt.Errorf("Unable to get region from metadata. %v", err)
 }
 
 func getInstanceIDFromMetadata() (string, error) {
 	//Try the metadata service
 	svc := ec2metadata.New(session.New(&aws.Config{}))
+	var id string
+	var err error
 
-	if id, err := svc.GetMetadata("instance-id"); err == nil {
+	if id, err = svc.GetMetadata("instance-id"); err == nil {
 		return id, nil
-	} else {
-		glog.Warning("Error getting instance-id from metadata", err)
 	}
+
+	glog.Warning("Error getting instance-id from metadata", err)
 	return "", errors.New("Unable to get instance id")
 }
 
@@ -70,6 +73,19 @@ func getInstanceID(config map[string]string) (string, error) {
 	}
 
 	return getInstanceIDFromMetadata()
+}
+
+func getPrivateAddress() (string, error) {
+	svc := ec2metadata.New(session.New(&aws.Config{}))
+	var address string
+	var err error
+
+	if address, err = svc.GetMetadata("local-ipv4"); err == nil {
+		return address, nil
+	}
+
+	glog.Error("Could not get private ip from metadata. ", err)
+	return "", errors.New("Unable to get Address")
 }
 
 func (w *AWSWorker) getAutoScalingGroupFromAPI() (string, error) {
@@ -196,6 +212,10 @@ func getCreds() *credentials.Credentials {
 		})
 }
 
+func (w *AWSWorker) GetAddress() string {
+	return w.address
+}
+
 func NewAWSWorker(config map[string]string) *AWSWorker {
 	w := &AWSWorker{
 		client: autoscaling.New(session.New(&aws.Config{
@@ -209,6 +229,10 @@ func NewAWSWorker(config map[string]string) *AWSWorker {
 	var err error
 	if w.instanceID, err = getInstanceID(config); err != nil {
 		panic("Can't get an instance id")
+	}
+
+	if w.address, err = getPrivateAddress(); err != nil {
+		panic(fmt.Sprintf("Cannot obtain address. %v", err))
 	}
 
 	glog.Infof("AWS Worker running for instance: %s in region: %s", w.instanceID, w.region)

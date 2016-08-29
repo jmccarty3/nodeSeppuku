@@ -52,7 +52,7 @@ func main() {
 
 	var err error
 	if *argKubeletName == "" && *argKubeletIP == "" {
-		*argKubeletName = getNameFromKubeletOrDie(*argKubeletHost, *argKubeletPort)
+		*argKubeletIP = aw.GetAddress()
 	}
 
 	if *argKubeletName != "" {
