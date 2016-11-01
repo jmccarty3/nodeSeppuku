@@ -10,7 +10,7 @@ import:
 - package: github.com/docker/docker
   version: 1.9.1
 - package: github.com/docker/libcontainer
-- package: k8s.io/kubernetes
-  version: 1.2.4
-  subpackages:
-  - pkg
+- package: k8s.io/client-go
+  version: 1.5
+  vcs: git
+  repo: https://github.com/kubernetes/client-go
