@@ -121,16 +121,15 @@ func (k *KubeWorker) removeNodeFromWatch(obj interface{}) {
 	glog.V(4).Infof("Remove node %s", node.Name)
 }
 
-func (k *KubeWorker) addNodeToIndex(node *v1.Node, watcher *podWatcher) error {
+func (k *KubeWorker) addNodeToIndex(node *v1.Node, watcher *podWatcher) {
 	k.indexLock.Lock()
 	defer k.indexLock.Unlock()
 	if _, ok := k.nodeIndex[node.GetName()]; ok {
 		glog.V(4).Infof("Node %v already exists in the node index", node.GetName())
-		return nil
+		return
 	}
 	k.nodeIndex[node.GetName()] = watcher
 	glog.V(4).Infof("Added node %s to index", node.GetName())
-	return nil //TODO: Return error
 }
 
 func (k *KubeWorker) removeNodeFromIndex(node *v1.Node) *podWatcher {
@@ -190,12 +189,10 @@ func (k *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
 	}
 	glog.V(3).Infof("Initial pod sync for node %s complete", node.GetName())
 
-	watcher.killTimer = newKillTimer(node.GetName())
-	go func() {
-		<-watcher.killTimer.C
-
+	watcher.killTimer = newKillTimer(node.GetName(), func() {
 		k.emptyCallback(k, node)
-	}()
+	})
+
 	return watcher
 }
 

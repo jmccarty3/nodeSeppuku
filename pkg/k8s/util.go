@@ -19,13 +19,17 @@ type killTimer struct {
 	timerSet bool
 	lock     sync.Mutex
 	C        <-chan time.Time
+	done     chan struct{}
+	callback func()
 }
 
-func newKillTimer(name string) *killTimer {
+func newKillTimer(name string, callback func()) *killTimer {
 	timer := &killTimer{
 		name:     name,
 		timer:    time.NewTimer(10 * time.Minute),
 		timerSet: false, //We will stop it immedially following this
+		done:     make(chan struct{}),
+		callback: callback,
 	}
 	timer.timer.Stop()
 	timer.C = timer.timer.C
@@ -40,7 +44,22 @@ func (k *killTimer) StopIfRunning() {
 	if k.timerSet {
 		glog.Infof("Timer %s canceling", k.name)
 		k.timer.Stop()
+		k.done <- struct{}{}
 		k.timerSet = false
+	}
+}
+
+func (k *killTimer) tick() {
+	for {
+		select {
+		case <-k.C:
+			k.lock.Lock()
+			defer k.lock.Unlock()
+			k.callback()
+			k.timerSet = false
+		case <-k.done:
+			return
+		}
 	}
 }
 
@@ -51,6 +70,7 @@ func (k *killTimer) ResetIfNotRunning(duration time.Duration) {
 
 	if !k.timerSet {
 		glog.Infof("Timer %s setting kill timer for %v \n", k.name, duration)
+		go k.tick()
 		k.timer.Reset(duration)
 		k.timerSet = true
 	}

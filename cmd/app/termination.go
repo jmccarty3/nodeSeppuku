@@ -62,6 +62,7 @@ func terminate(w *k8s.KubeWorker, node *v1.Node) {
 	empty, err := w.VerifyNodeEmpty(node)
 	if err != nil {
 		glog.Errorf("Could not verify node: %s is empty. Error: %v", node.GetName(), err)
+		return
 	}
 	if !empty {
 		glog.Warning("Node %s no longer empty. Skipping")
@@ -72,6 +73,7 @@ func terminate(w *k8s.KubeWorker, node *v1.Node) {
 	worker := aws.NewAWSWorkerFromNode(node)
 	if err = worker.RemoveNode(); err != nil {
 		glog.Errorf("Could not remove node from AWS: %v", err)
-		//TODO: Requeue in k8s worker
+		// Timer will become eligable for termination again next cycle
 	}
+
 }
