@@ -65,12 +65,12 @@ func NewKubeWorker(masterURL, kubeConfig string, terminateTime *time.Duration, c
 	}
 }
 
-func (k *KubeWorker) findNodeByName(name string) (*v1.Node, error) {
-	return k.client.Nodes().Get(name)
+func (kubeWorker *KubeWorker) findNodeByName(name string) (*v1.Node, error) {
+	return kubeWorker.client.Nodes().Get(name)
 }
 
-func (k *KubeWorker) findNodeByAddress(address string) (v1.Node, error) {
-	nodes, err := k.client.Nodes().List(api.ListOptions{
+func (kubeWorker *KubeWorker) findNodeByAddress(address string) (v1.Node, error) {
+	nodes, err := kubeWorker.client.Nodes().List(api.ListOptions{
 		LabelSelector: labels.Everything(),
 		FieldSelector: fields.Everything(),
 	})
@@ -90,17 +90,17 @@ func (k *KubeWorker) findNodeByAddress(address string) (v1.Node, error) {
 	return v1.Node{}, errors.New("Unable to find node by address")
 }
 
-func (k *KubeWorker) addNodeToWatch(obj interface{}) {
+func (kubeWorker *KubeWorker) addNodeToWatch(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
 		glog.Errorf("add node cannot convert to *v1.Node: %v", obj)
 		return
 	}
 
-	k.addNodeToIndex(node, k.createWatcher(node))
+	kubeWorker.addNodeToIndex(node, kubeWorker.createWatcher(node))
 }
 
-func (k *KubeWorker) removeNodeFromWatch(obj interface{}) {
+func (kubeWorker *KubeWorker) removeNodeFromWatch(obj interface{}) {
 	var node *v1.Node
 	switch t := obj.(type) {
 	case *v1.Node:
@@ -117,57 +117,57 @@ func (k *KubeWorker) removeNodeFromWatch(obj interface{}) {
 		return
 	}
 
-	k.removeNodeFromIndex(node)
+	kubeWorker.removeNodeFromIndex(node)
 	glog.V(4).Infof("Remove node %s", node.Name)
 }
 
-func (k *KubeWorker) addNodeToIndex(node *v1.Node, watcher *podWatcher) {
-	k.indexLock.Lock()
-	defer k.indexLock.Unlock()
-	if _, ok := k.nodeIndex[node.GetName()]; ok {
+func (kubeWorker *KubeWorker) addNodeToIndex(node *v1.Node, watcher *podWatcher) {
+	kubeWorker.indexLock.Lock()
+	defer kubeWorker.indexLock.Unlock()
+	if _, ok := kubeWorker.nodeIndex[node.GetName()]; ok {
 		glog.V(4).Infof("Node %v already exists in the node index", node.GetName())
 		return
 	}
-	k.nodeIndex[node.GetName()] = watcher
+	kubeWorker.nodeIndex[node.GetName()] = watcher
 	glog.V(4).Infof("Added node %s to index", node.GetName())
 }
 
-func (k *KubeWorker) removeNodeFromIndex(node *v1.Node) *podWatcher {
-	k.indexLock.Lock()
-	defer k.indexLock.Unlock()
+func (kubeWorker *KubeWorker) removeNodeFromIndex(node *v1.Node) *podWatcher {
+	kubeWorker.indexLock.Lock()
+	defer kubeWorker.indexLock.Unlock()
 
-	removed := k.nodeIndex[node.GetName()]
-	delete(k.nodeIndex, node.GetName())
+	removed := kubeWorker.nodeIndex[node.GetName()]
+	delete(kubeWorker.nodeIndex, node.GetName())
 	removed.stopChan <- struct{}{}
 	removed.killTimer.StopIfRunning()
 	return removed
 }
 
-func (k *KubeWorker) createNodeWatcher() {
-	lw := cache.NewListWatchFromClient(k.client.Core().GetRESTClient(), "nodes", api.NamespaceAll, fields.Everything())
+func (kubeWorker *KubeWorker) createNodeWatcher() {
+	lw := cache.NewListWatchFromClient(kubeWorker.client.Core().GetRESTClient(), "nodes", api.NamespaceAll, fields.Everything())
 
-	_, k.nodeController = cache.NewInformer(
+	_, kubeWorker.nodeController = cache.NewInformer(
 		lw,
 		&v1.Node{},
 		0,
 		cache.ResourceEventHandlerFuncs{
-			AddFunc:    k.addNodeToWatch,
-			DeleteFunc: k.removeNodeFromWatch,
+			AddFunc:    kubeWorker.addNodeToWatch,
+			DeleteFunc: kubeWorker.removeNodeFromWatch,
 		},
 	)
 
-	go k.nodeController.Run(wait.NeverStop)
+	go kubeWorker.nodeController.Run(wait.NeverStop)
 	//Wait for initial sync
-	for k.nodeController.HasSynced() == false {
+	for kubeWorker.nodeController.HasSynced() == false {
 		time.Sleep(1 * time.Second)
 	}
 	glog.Info("Initial node sync complete")
 }
 
-func (k *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
+func (kubeWorker *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
 	f := fields.Set{
 		"spec.nodeName": node.Name}
-	lw := cache.NewListWatchFromClient(k.client.Core().GetRESTClient(), "pods", api.NamespaceAll, fields.SelectorFromSet(f))
+	lw := cache.NewListWatchFromClient(kubeWorker.client.Core().GetRESTClient(), "pods", api.NamespaceAll, fields.SelectorFromSet(f))
 	watcher := &podWatcher{
 		name:     node.GetName(),
 		stopChan: make(chan struct{}),
@@ -190,82 +190,87 @@ func (k *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
 	glog.V(3).Infof("Initial pod sync for node %s complete", node.GetName())
 
 	watcher.killTimer = newKillTimer(node.GetName(), func() {
-		k.emptyCallback(k, node)
+		kubeWorker.emptyCallback(kubeWorker, node)
 	})
 
 	return watcher
 }
 
 //WatchNodeByName creates a watcher based on nodename given
-func (k *KubeWorker) WatchNodeByName(name string) error {
-	node, err := k.findNodeByName(name)
+func (kubeWorker *KubeWorker) WatchNodeByName(name string) error {
+	node, err := kubeWorker.findNodeByName(name)
 
 	if err != nil {
 		return err
 	}
 
-	k.addNodeToIndex(node, k.createWatcher(node))
+	kubeWorker.addNodeToIndex(node, kubeWorker.createWatcher(node))
 	return nil
 }
 
 //WatchNodeByAddress creates a watcher based on the node address
-func (k *KubeWorker) WatchNodeByAddress(address string) error {
-	node, err := k.findNodeByAddress(address)
+func (kubeWorker *KubeWorker) WatchNodeByAddress(address string) error {
+	node, err := kubeWorker.findNodeByAddress(address)
 
 	if err != nil {
 		return err
 	}
 	glog.Info(node.Name)
-	glog.Info(k.client.ServerVersion())
+	glog.Info(kubeWorker.client.ServerVersion())
 
-	k.addNodeToIndex(&node, k.createWatcher(&node))
+	kubeWorker.addNodeToIndex(&node, kubeWorker.createWatcher(&node))
 	return nil
 }
 
 //WatchAllNodes sets the worker to monitor all node changes in the cluster
-func (k *KubeWorker) WatchAllNodes() {
+func (kubeWorker *KubeWorker) WatchAllNodes() {
 	glog.Info("Preparing to watch all nodes in system")
-	k.createNodeWatcher()
+	kubeWorker.createNodeWatcher()
 	glog.Info("Setup complete")
 }
 
 //MarkUnschedulable marks the given node as Unschedulable
-func (k *KubeWorker) MarkUnschedulable(node *v1.Node) {
+func (kubeWorker *KubeWorker) MarkUnschedulable(node *v1.Node) {
 	//Getting the most up to date node
-	n, _ := k.client.Nodes().Get(node.GetName())
+	n, _ := kubeWorker.client.Nodes().Get(node.GetName())
 	n.Spec.Unschedulable = true
-	if _, err := k.client.Nodes().Update(n); err != nil {
+	if _, err := kubeWorker.client.Nodes().Update(n); err != nil {
 		glog.Errorf("Error marking node Unschedulable: %v", err)
 	}
 }
 
 //VerifyNodeEmpty allows a client to verify a node is still empty before removal
-func (k *KubeWorker) VerifyNodeEmpty(node *v1.Node) (bool, error) {
-	k.indexLock.Lock()
-	defer k.indexLock.Unlock()
+func (kubeWorker *KubeWorker) VerifyNodeEmpty(node *v1.Node) (bool, error) {
+	kubeWorker.indexLock.Lock()
+	defer kubeWorker.indexLock.Unlock()
 
 	var w *podWatcher
 	var ok bool
-	if w, ok = k.nodeIndex[node.GetName()]; !ok {
+	if w, ok = kubeWorker.nodeIndex[node.GetName()]; !ok {
 		return false, fmt.Errorf("Node %s not found", node.GetName())
 	}
 	return isNodeEmpty(w.store), nil
 }
 
-//Run exececutes the primary control loop for the worker
-func (k *KubeWorker) Run() {
-	ticker := time.NewTicker(time.Minute)
-	for t := range ticker.C {
-		glog.V(3).Info("Checking pods at ", t)
-		k.indexLock.Lock()
-		for _, watcher := range k.nodeIndex {
-			if isNodeEmpty(watcher.store) {
-				watcher.killTimer.ResetIfNotRunning(*k.terminateTime)
-			} else {
-				watcher.killTimer.StopIfRunning()
-			}
+func (kubeWorker *KubeWorker) checkNodes() {
+	kubeWorker.indexLock.Lock()
+	defer kubeWorker.indexLock.Unlock()
+	glog.V(3).Info("Checking pods at ", time.Now())
+
+	for _, watcher := range kubeWorker.nodeIndex {
+		if isNodeEmpty(watcher.store) {
+			watcher.killTimer.ResetIfNotRunning(*kubeWorker.terminateTime)
+		} else {
+			watcher.killTimer.StopIfRunning()
 		}
-		glog.V(3).Infof("Finished checking pods of %d nodes", len(k.nodeIndex))
-		k.indexLock.Unlock()
+	}
+	glog.V(3).Infof("Finished checking pods of %d nodes", len(kubeWorker.nodeIndex))
+}
+
+//Run exececutes the primary control loop for the worker
+func (kubeWorker *KubeWorker) Run() {
+	ticker := time.NewTicker(time.Minute)
+	for range ticker.C {
+		kubeWorker.checkNodes()
 	}
 }

@@ -3,7 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"runtime"
 	"time"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/jmccarty3/nodeSeppuku/cmd/app"
 	"github.com/jmccarty3/nodeSeppuku/pkg/k8s"
@@ -38,6 +43,10 @@ func main() {
 		fmt.Print("Self Test")
 		return
 	}
+	runtime.SetBlockProfileRate(1)
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8080", nil))
+	}()
 
 	t := app.NewTerminator(*argBurstLimit, !*argPreventTermination)
 	termTime := time.Duration(*argTerminateTime) * time.Minute

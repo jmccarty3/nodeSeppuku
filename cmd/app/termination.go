@@ -43,6 +43,7 @@ func (t *Terminator) NodeEmpty(w *k8s.KubeWorker, node *v1.Node) {
 		return
 	}
 	if t.burstLimit > 0 {
+		glog.V(3).Infof("Sending node %s into the terminated queue", node.GetName())
 		t.terminateQueue <- terminateMessage{
 			worker: w,
 			node:   node,
@@ -55,10 +56,12 @@ func (t *Terminator) NodeEmpty(w *k8s.KubeWorker, node *v1.Node) {
 func (t *Terminator) terminateWorker() {
 	for m := range t.terminateQueue {
 		terminate(m.worker, m.node)
+		glog.Infof("Worker queue done %s", m.node.GetName())
 	}
 }
 
 func terminate(w *k8s.KubeWorker, node *v1.Node) {
+	glog.V(2).Infof("Beginning termination for node: %s", node.GetName())
 	empty, err := w.VerifyNodeEmpty(node)
 	if err != nil {
 		glog.Errorf("Could not verify node: %s is empty. Error: %v", node.GetName(), err)
@@ -68,12 +71,15 @@ func terminate(w *k8s.KubeWorker, node *v1.Node) {
 		glog.Warning("Node %s no longer empty. Skipping")
 		return
 	}
+	glog.V(3).Infof("Node: %s still empty. Termination can proceed.", node.GetName())
 
 	w.MarkUnschedulable(node)
 	worker := aws.NewAWSWorkerFromNode(node)
 	if err = worker.RemoveNode(); err != nil {
-		glog.Errorf("Could not remove node from AWS: %v", err)
+		glog.Errorf("Could not remove node %s from AWS: %v", node.GetName(), err)
 		// Timer will become eligable for termination again next cycle
+	} else {
+		glog.Infof("Node %s terminated", node.GetName())
 	}
 
 }

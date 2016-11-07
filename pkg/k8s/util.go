@@ -36,6 +36,23 @@ func newKillTimer(name string, callback func()) *killTimer {
 	return timer
 }
 
+func (k *killTimer) tick() {
+
+	select {
+	case <-k.C:
+		// Not locking the timer here to prevent a deadlock in downsteam code.
+		// It is possible for the callback to fire right as someone is turning of the timer.
+		// Downstream code should handle this.
+		glog.V(2).Infof("Timer %s up \n", k.name)
+		k.callback()
+		k.lock.Lock()
+		k.timerSet = false
+		k.lock.Unlock()
+	case <-k.done:
+	}
+	return
+}
+
 //StopIfRunning stops the wrapped timer if it is currently set
 func (k *killTimer) StopIfRunning() {
 	k.lock.Lock()
@@ -46,20 +63,6 @@ func (k *killTimer) StopIfRunning() {
 		k.timer.Stop()
 		k.done <- struct{}{}
 		k.timerSet = false
-	}
-}
-
-func (k *killTimer) tick() {
-	for {
-		select {
-		case <-k.C:
-			k.lock.Lock()
-			defer k.lock.Unlock()
-			k.callback()
-			k.timerSet = false
-		case <-k.done:
-			return
-		}
 	}
 }
 
