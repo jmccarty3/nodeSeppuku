@@ -239,6 +239,16 @@ func (kubeWorker *KubeWorker) MarkUnschedulable(node *v1.Node) {
 	}
 }
 
+//MarkSchedulable marks the given node as Schedulable
+func (kubeWorker *KubeWorker) MarkSchedulable(node *v1.Node) {
+	//Getting the most up to date node
+	n, _ := kubeWorker.client.Nodes().Get(node.GetName())
+	n.Spec.Unschedulable = false
+	if _, err := kubeWorker.client.Nodes().Update(n); err != nil {
+		glog.Errorf("Error marking node Schedulable: %v", err)
+	}
+}
+
 //VerifyNodeEmpty allows a client to verify a node is still empty before removal
 func (kubeWorker *KubeWorker) VerifyNodeEmpty(node *v1.Node) (bool, error) {
 	kubeWorker.indexLock.Lock()

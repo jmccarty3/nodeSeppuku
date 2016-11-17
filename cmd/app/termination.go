@@ -73,10 +73,16 @@ func terminate(w *k8s.KubeWorker, node *v1.Node) {
 	}
 	glog.V(3).Infof("Node: %s still empty. Termination can proceed.", node.GetName())
 
-	w.MarkUnschedulable(node)
 	worker := aws.NewAWSWorkerFromNode(node)
+	if !worker.NodeSafeToRemove() {
+		glog.Warningf("Node: %s not safe to remove. Skipping", node.GetName())
+		return
+	}
+
+	w.MarkUnschedulable(node)
 	if err = worker.RemoveNode(); err != nil {
 		glog.Errorf("Could not remove node %s from AWS: %v", node.GetName(), err)
+		w.MarkSchedulable(node)
 		// Timer will become eligable for termination again next cycle
 	} else {
 		glog.Infof("Node %s terminated", node.GetName())

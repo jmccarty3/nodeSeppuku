@@ -45,36 +45,55 @@ func (w *AWSWorker) getAutoScalingGroupFromAPI() (string, error) {
 	return "", nil
 }
 
-func (w *AWSWorker) canDecrimentGroup(autoscalingID string) (bool, error) {
+func (w *AWSWorker) getAutoScalingGroup() (*autoscaling.Group, error) {
+	autoscalingID, err := w.getAutoScalingGroupFromAPI()
+
+	if autoscalingID == "" || err != nil {
+		return nil, err
+	}
+
 	params := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(autoscalingID)},
 	}
-
 	resp, err := w.client.DescribeAutoScalingGroups(params)
 
 	if err != nil {
-		glog.Errorf("Could not obtain autoscaling group informaiton: %v", err)
-		return false, err
+		return nil, fmt.Errorf("Could not obtain autoscaling group informaiton: %v", err)
 	}
 
-	return *resp.AutoScalingGroups[0].DesiredCapacity != 0, nil
+	return resp.AutoScalingGroups[0], nil
 }
 
-func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
-	var decriment bool
-	{
-		var err error
-		if decriment, err = w.canDecrimentGroup(autoscalingID); err != nil {
-			glog.Warning("Cannot detach from ASG.")
-			return err //Pass the error up
-		}
+func isAutoScalingGroupInBounds(asg *autoscaling.Group) bool {
+	return int64(len(asg.Instances)) > *asg.MinSize
+}
+
+//NodeSafeToRemove verifies that removing a node from AWS is ok
+func (w *AWSWorker) NodeSafeToRemove() bool {
+	asg, err := w.getAutoScalingGroup()
+	if asg == nil || err != nil {
+		return false
+	}
+	//TODO: Consider unbalance check
+	return isAutoScalingGroupInBounds(asg)
+}
+
+func canDecrimentGroup(asg *autoscaling.Group) bool {
+	return *asg.DesiredCapacity != 0
+}
+
+func (w *AWSWorker) detachAndScaleASG(asg *autoscaling.Group) error {
+	if asg == nil {
+		return fmt.Errorf("Nil autoscaling group passed for detach and scale")
 	}
 
-	glog.Infof("ASG %s will be decrimented: %v", autoscalingID, decriment)
+	decriment := canDecrimentGroup(asg)
+
+	glog.Infof("ASG %s will be decrimented: %v", *asg.AutoScalingGroupName, decriment)
 
 	params := &autoscaling.DetachInstancesInput{
 		InstanceIds:                    []*string{aws.String(w.instanceID)},
-		AutoScalingGroupName:           aws.String(autoscalingID),
+		AutoScalingGroupName:           asg.AutoScalingGroupName,
 		ShouldDecrementDesiredCapacity: aws.Bool(decriment),
 	}
 
@@ -87,7 +106,7 @@ func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
 
 	activtyParams := &autoscaling.DescribeScalingActivitiesInput{
 		ActivityIds:          []*string{resp.Activities[0].ActivityId},
-		AutoScalingGroupName: aws.String(autoscalingID),
+		AutoScalingGroupName: asg.AutoScalingGroupName,
 		MaxRecords:           aws.Int64(1),
 	}
 
@@ -112,9 +131,9 @@ func (w *AWSWorker) detachAndScaleASG(autoscalingID string) error {
 
 //RemoveNode works to remove a node/instance from the system
 func (w *AWSWorker) RemoveNode() error {
-	if autoscalingID, err := w.getAutoScalingGroupFromAPI(); err == nil {
-		if autoscalingID != "" {
-			if err = w.detachAndScaleASG(autoscalingID); err != nil {
+	if asg, err := w.getAutoScalingGroup(); err == nil {
+		if asg != nil {
+			if err = w.detachAndScaleASG(asg); err != nil {
 				return err
 			}
 		}
