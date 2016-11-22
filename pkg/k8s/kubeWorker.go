@@ -19,6 +19,11 @@ import (
 	"k8s.io/client-go/1.5/tools/clientcmd"
 )
 
+var (
+	podResyncPeriod  = 30 * time.Second
+	nodeResyncPeriod = 30 * time.Second
+)
+
 type podWatcher struct {
 	name       string
 	controller *cache.Controller
@@ -149,7 +154,7 @@ func (kubeWorker *KubeWorker) createNodeWatcher() {
 	_, kubeWorker.nodeController = cache.NewInformer(
 		lw,
 		&v1.Node{},
-		0,
+		nodeResyncPeriod,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    kubeWorker.addNodeToWatch,
 			DeleteFunc: kubeWorker.removeNodeFromWatch,
@@ -176,7 +181,7 @@ func (kubeWorker *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
 	watcher.store.Indexer, watcher.controller = cache.NewIndexerInformer(
 		lw,
 		&v1.Pod{},
-		0,
+		podResyncPeriod,
 		cache.ResourceEventHandlerFuncs{},
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
