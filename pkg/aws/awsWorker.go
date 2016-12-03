@@ -71,8 +71,12 @@ func isAutoScalingGroupInBounds(asg *autoscaling.Group) bool {
 //NodeSafeToRemove verifies that removing a node from AWS is ok
 func (w *AWSWorker) NodeSafeToRemove() bool {
 	asg, err := w.getAutoScalingGroup()
-	if asg == nil || err != nil {
+	if err != nil {
 		return false
+	}
+
+	if asg == nil {
+		return true
 	}
 	//TODO: Consider unbalance check
 	return isAutoScalingGroupInBounds(asg)
