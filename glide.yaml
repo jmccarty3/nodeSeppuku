@@ -14,3 +14,6 @@ import:
   version: 1.5
   vcs: git
   repo: https://github.com/kubernetes/client-go
+- package: github.com/emicklei/go-restful/swagger
+  version: v1.2
+  vcs: git
