@@ -41,6 +41,7 @@ type KubeWorker struct {
 	indexLock      sync.Mutex
 	terminateTime  *time.Duration
 	emptyCallback  NodeEmptyCallback
+	indexer        cache.Indexer
 }
 
 //NodeEmptyCallback represents the function to call when then node is empty
@@ -67,6 +68,7 @@ func NewKubeWorker(masterURL, kubeConfig string, terminateTime *time.Duration, c
 		nodeIndex:     make(map[string]*podWatcher),
 		terminateTime: terminateTime,
 		emptyCallback: callback,
+		indexer:       cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}),
 	}
 }
 
@@ -95,6 +97,7 @@ func (kubeWorker *KubeWorker) findNodeByAddress(address string) (v1.Node, error)
 	return v1.Node{}, errors.New("Unable to find node by address")
 }
 
+//TODO May leak here
 func (kubeWorker *KubeWorker) addNodeToWatch(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
@@ -149,7 +152,7 @@ func (kubeWorker *KubeWorker) removeNodeFromIndex(node *v1.Node) *podWatcher {
 }
 
 func (kubeWorker *KubeWorker) createNodeWatcher() {
-	lw := cache.NewListWatchFromClient(kubeWorker.client.Core().GetRESTClient(), "nodes", api.NamespaceAll, fields.Everything())
+	lw := cache.NewListWatchFromClient(kubeWorker.client.CoreClient, "nodes", api.NamespaceAll, fields.Everything())
 
 	_, kubeWorker.nodeController = cache.NewInformer(
 		lw,
@@ -171,27 +174,16 @@ func (kubeWorker *KubeWorker) createNodeWatcher() {
 
 func (kubeWorker *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
 	f := fields.Set{
-		"spec.nodeName": node.Name}
-	lw := cache.NewListWatchFromClient(kubeWorker.client.Core().GetRESTClient(), "pods", api.NamespaceAll, fields.SelectorFromSet(f))
+		"spec.nodeName": node.GetName()}
+	lw := cache.NewListWatchFromClient(kubeWorker.client.CoreClient, "pods", api.NamespaceAll, fields.SelectorFromSet(f))
 	watcher := &podWatcher{
 		name:     node.GetName(),
 		stopChan: make(chan struct{}),
 	}
 
-	watcher.store.Indexer, watcher.controller = cache.NewIndexerInformer(
-		lw,
-		&v1.Pod{},
-		podResyncPeriod,
-		cache.ResourceEventHandlerFuncs{},
-		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
-	)
-
-	//TODO: Remove this. It should probably only be done when added to the index
-	go watcher.controller.Run(watcher.stopChan)
-	//Wait for initial sync
-	for watcher.controller.HasSynced() == false {
-		time.Sleep(1 * time.Second)
-	}
+	watcher.store.Indexer = kubeWorker.indexer
+	cache.NewReflector(lw, &v1.Pod{}, watcher.store.Indexer, podResyncPeriod).RunUntil(watcher.stopChan)
+	watcher.store.Indexer.Resync()
 	glog.V(3).Infof("Initial pod sync for node %s complete", node.GetName())
 
 	watcher.killTimer = newKillTimer(node.GetName(), func() {
@@ -284,7 +276,7 @@ func (kubeWorker *KubeWorker) checkNodes() {
 
 //Run exececutes the primary control loop for the worker
 func (kubeWorker *KubeWorker) Run() {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(60 * time.Second)
 	for range ticker.C {
 		kubeWorker.checkNodes()
 	}
