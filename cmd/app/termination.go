@@ -68,7 +68,7 @@ func terminate(w *k8s.KubeWorker, node *v1.Node) {
 		return
 	}
 	if !empty {
-		glog.Warning("Node %s no longer empty. Skipping")
+		glog.Warningf("Node %s no longer empty. Skipping", node.GetName())
 		return
 	}
 	glog.V(3).Infof("Node: %s still empty. Termination can proceed.", node.GetName())
