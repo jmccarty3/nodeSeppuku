@@ -27,7 +27,7 @@ func newKillTimer(name string, callback func()) *killTimer {
 		name:     name,
 		timer:    time.NewTimer(10 * time.Minute),
 		timerSet: false, //We will stop it immedially following this
-		done:     make(chan struct{}),
+		done:     make(chan struct{}, 1),
 		callback: callback,
 	}
 	timer.timer.Stop()
