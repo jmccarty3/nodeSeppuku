@@ -8,7 +8,6 @@ import (
 	"k8s.io/client-go/1.5/pkg/api"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/runtime"
-	"k8s.io/client-go/1.5/tools/cache"
 
 	"github.com/golang/glog"
 )
@@ -101,10 +100,9 @@ func isPodDaemonset(pod *v1.Pod) bool {
 	return false
 }
 
-func isNodeEmpty(store cache.StoreToPodLister) bool {
+func isNodeEmpty(pods []interface{}) bool {
 	re := regexp.MustCompile("gcr.io/google_containers/pause")
 	//Currently using the Indexer List since the listwatcher is returning *v1.Pod but the StoreToPodLister is hard coded to expect *api.Pod
-	pods := store.Indexer.List()
 	for _, i := range pods {
 		p := i.(*v1.Pod)
 		if p.Status.Phase == v1.PodRunning || p.Status.Phase == v1.PodPending {

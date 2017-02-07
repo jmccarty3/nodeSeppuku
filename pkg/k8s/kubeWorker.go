@@ -24,18 +24,18 @@ var (
 	nodeResyncPeriod = 30 * time.Second
 )
 
+const hostIndexName = "byHost"
+
 type podWatcher struct {
-	name       string
-	controller *cache.Controller
-	store      cache.StoreToPodLister
-	killTimer  *killTimer
-	stopChan   chan struct{}
+	name      string
+	killTimer *killTimer
 }
 
 //KubeWorker operates on a kubernetes cluster
 type KubeWorker struct {
 	client         *kubernetes.Clientset
 	nodeController *cache.Controller
+	podStore       cache.Indexer
 	scheme         *runtime.Scheme
 	nodeIndex      map[string]*podWatcher
 	indexLock      sync.Mutex
@@ -146,7 +146,6 @@ func (kubeWorker *KubeWorker) removeNodeFromIndex(node *v1.Node) *podWatcher {
 
 	removed := kubeWorker.nodeIndex[node.GetName()]
 	delete(kubeWorker.nodeIndex, node.GetName())
-	removed.stopChan <- struct{}{}
 	removed.killTimer.StopIfRunning()
 	return removed
 }
@@ -172,19 +171,21 @@ func (kubeWorker *KubeWorker) createNodeWatcher() {
 	glog.Info("Initial node sync complete")
 }
 
-func (kubeWorker *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
-	f := fields.Set{
-		"spec.nodeName": node.GetName()}
-	lw := cache.NewListWatchFromClient(kubeWorker.client.CoreClient, "pods", api.NamespaceAll, fields.SelectorFromSet(f))
-	watcher := &podWatcher{
-		name:     node.GetName(),
-		stopChan: make(chan struct{}),
-	}
+func hostIndexFunc(obj interface{}) ([]string, error) {
+	pod := obj.(*v1.Pod)
+	return []string{pod.Spec.NodeName}, nil
+}
 
-	watcher.store.Indexer = kubeWorker.indexer
-	cache.NewReflector(lw, &v1.Pod{}, watcher.store.Indexer, podResyncPeriod).RunUntil(watcher.stopChan)
-	watcher.store.Indexer.Resync()
-	glog.V(3).Infof("Initial pod sync for node %s complete", node.GetName())
+func (kubeWorker *KubeWorker) createPodWatcher() {
+	lw := cache.NewListWatchFromClient(kubeWorker.client.CoreClient, "pods", api.NamespaceAll, fields.Everything())
+	kubeWorker.podStore = cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{hostIndexName: hostIndexFunc})
+	go cache.NewReflector(lw, &v1.Pod{}, kubeWorker.podStore, podResyncPeriod).Run()
+}
+
+func (kubeWorker *KubeWorker) createWatcher(node *v1.Node) *podWatcher {
+	watcher := &podWatcher{
+		name: node.GetName(),
+	}
 
 	watcher.killTimer = newKillTimer(node.GetName(), func() {
 		kubeWorker.emptyCallback(kubeWorker, node)
@@ -256,16 +257,20 @@ func (kubeWorker *KubeWorker) VerifyNodeEmpty(node *v1.Node) (bool, error) {
 	if w, ok = kubeWorker.nodeIndex[node.GetName()]; !ok {
 		return false, fmt.Errorf("Node %s not found", node.GetName())
 	}
-	return isNodeEmpty(w.store), nil
+	pods, _ := kubeWorker.podStore.ByIndex(hostIndexName, w.name)
+	return isNodeEmpty(pods), nil
 }
 
 func (kubeWorker *KubeWorker) checkNodes() {
 	kubeWorker.indexLock.Lock()
 	defer kubeWorker.indexLock.Unlock()
 	glog.V(3).Info("Checking pods at ", time.Now())
+	t := cache.StoreToPodLister{Indexer: kubeWorker.podStore}
 
 	for _, watcher := range kubeWorker.nodeIndex {
-		if isNodeEmpty(watcher.store) {
+		glog.V(3).Infof("Checking pods for node: %s", watcher.name)
+		pods, _ := t.Indexer.ByIndex(hostIndexName, watcher.name)
+		if isNodeEmpty(pods) {
 			watcher.killTimer.ResetIfNotRunning(*kubeWorker.terminateTime)
 		} else {
 			watcher.killTimer.StopIfRunning()
@@ -276,6 +281,7 @@ func (kubeWorker *KubeWorker) checkNodes() {
 
 //Run exececutes the primary control loop for the worker
 func (kubeWorker *KubeWorker) Run() {
+	kubeWorker.createPodWatcher()
 	ticker := time.NewTicker(60 * time.Second)
 	for range ticker.C {
 		kubeWorker.checkNodes()
